@@ -23,9 +23,25 @@ This project provides a C++ library and test applications for receiving and proc
 
 ## Building the Project
 
-To build the project, run the following commands:
+### Option 1: Build with Script
+
+To build the project automatically, run the following commands:
 
 ```bash
+./scripts/build.sh
+```
+
+### Option 2: Build with CMake
+
+To build the project manually, run the following commands:
+
+```bash
+# Setup environment
+cd /scripts/environment
+./detect_environment.sh
+source ./setup_environment.sh
+cd ../..
+
 # Create and navigate to a build directory
 mkdir build && cd build
 
