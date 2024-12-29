@@ -1,0 +1,12 @@
+{
+    "clientName": "DQM",
+    "eventId": -1,
+    "triggerMask": -1,
+    "samplingType": 1,
+    "bufferSize": 33554432,
+    "maxEventSize": 20000,
+    "bufferName": "SYSTEM",
+    "cacheSize": 100000,
+    "timeoutMillis": 0,
+    "eventBufferSize": 6
+}
