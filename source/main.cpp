@@ -6,17 +6,6 @@
 #include <csignal>
 #include <cstdlib>
 
-// Global flag to handle graceful shutdown
-std::atomic<bool> keepRunning(true);
-
-// Signal handler to handle Ctrl+C
-void signalHandler(int signal) {
-    std::cout << "Received stop signal" << std::endl;
-    if (signal == SIGINT) {
-        keepRunning = false;
-    }
-}
-
 int main(int argc, char* argv[]) {
     // Default configuration
     int intervalMs = 1000;       // Period in milliseconds
@@ -33,37 +22,79 @@ int main(int argc, char* argv[]) {
     std::cout << "Starting Receiver with interval " << intervalMs 
               << " ms and retrieving " << numEvents << " events per iteration." << std::endl;
 
-    // Set up signal handling for graceful shutdown
-    std::signal(SIGINT, signalHandler);
-
     // Create and start the Receiver
     Receiver& receiver = Receiver::getInstance();
     receiver.init(
-        "",                      // Set the host name
-        "BUF001",                // Set the buffer name to "BUF001"
-        "Event Receiver",        // Set the client name
-        EVENTID_ALL,             // Set the event ID to request all events
-        true,                    // Set to get all events
-        1000                     // Set the maximum buffer size
-    );                   
+        "",                   // Host name (default is empty, resolved via cm_get_environment)
+        "BUF001",             // Buffer name to use
+        "Event Receiver",     // Client name to register
+        EVENTID_ALL,          // Event ID to request (default: all events)
+        true,                 // Whether to get all events (default: true)
+        1000,                 // Maximum buffer size
+        300                   // Timeout for cm_yield (default: 300 ms)
+    );
+
+    // Initialize the timestamp tracking
+    auto lastTimestamp = std::chrono::system_clock::now();
+
     receiver.start();
 
     // Periodically retrieve and print events
     while (receiver.isListeningForEvents()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
 
-        auto events = receiver.getNLatest(numEvents);
-        if (events.empty()) {
+        // Retrieve the latest events after the last timestamp
+        auto timedEvents = receiver.getLatestEvents(numEvents, lastTimestamp);
+        
+        if (timedEvents.empty()) {
             std::cout << "[INFO] No new events in the buffer." << std::endl;
         } else {
-            for (const auto& event : events) {
-                std::cout << "[EVENT] Received event with size: " << event.size() << " bytes" << std::endl;
+            std::vector<TMEvent> events;
+            std::vector<std::chrono::system_clock::time_point> timestamps;
+
+            // Unpack events and timestamps
+            for (const auto& timedEvent : timedEvents) {
+                events.push_back(timedEvent.event); // Unpack TMEvent
+                timestamps.push_back(timedEvent.timestamp); // Unpack timestamp
             }
+
+            // Print the events and their details
+            for (size_t i = 0; i < events.size(); ++i) {
+                const auto& event = events[i];
+                const auto& timestamp = timestamps[i];
+
+                // Print event details
+                std::cout << "[EVENT] Received event with size: " << event.data_size << " bytes" << std::endl;
+                std::cout << "  Event ID: " << event.event_id << std::endl;
+                std::cout << "  Trigger Mask: " << event.trigger_mask << std::endl;
+                std::cout << "  Serial Number: " << event.serial_number << std::endl;
+                std::cout << "  Time Stamp: " << std::chrono::system_clock::to_time_t(timestamp) << std::endl;
+                std::cout << "  Data Size: " << event.data_size << " bytes" << std::endl;
+                std::cout << "  Event Header Size: " << event.event_header_size << " bytes" << std::endl;
+                std::cout << "  Bank Header Flags: " << event.bank_header_flags << std::endl;
+
+                if (!event.banks.empty()) {
+                    std::cout << "  Found " << event.banks.size() << " banks in the event:" << std::endl;
+                    for (const auto& bank : event.banks) {
+                        std::cout << "    Bank Name: " << bank.name << std::endl;
+                        std::cout << "    Bank Size: " << bank.data_size << " bytes" << std::endl;
+                    }
+                }
+
+                // Optionally, print event data (if small enough)
+                std::cout << "  Event Data (first 32 bytes): ";
+                for (size_t j = 0; j < std::min(event.data.size(), size_t(32)); ++j) {
+                    std::cout << std::hex << (event.data[j] & 0xFF) << " ";
+                }
+                std::cout << std::dec << std::endl;
+            }
+
+            // Update the timestamp to the most recent event timestamp (for the next iteration)
+            lastTimestamp = timestamps.back();
         }
     }
 
-
-    std::cout << "Stoping Receiver" << std::endl;
+    std::cout << "Stopping Receiver" << std::endl;
     receiver.stop();
     std::cout << "Exiting Program" << std::endl;
 

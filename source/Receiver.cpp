@@ -15,7 +15,8 @@ Receiver::Receiver()
       clientName("Event Receiver"), 
       eventID(EVENTID_ALL), 
       getAllEvents(true), 
-      maxBufferSize(1000), 
+      maxBufferSize(1000),
+      cmYieldTimeout(300), 
       running(false) {}
 
 // Destructor
@@ -39,12 +40,11 @@ void Receiver::init(const std::string& host,
                     const std::string& clientName, 
                     int eventID, 
                     bool getAllEvents, 
-                    size_t maxBufferSize) {
-    // Only initialize if not already initialized
+                    size_t maxBufferSize, 
+                    int cmYieldTimeout) {
     if (hostName.empty()) {
-        // If host is empty, retrieve it from cm_get_environment
         if (host.empty()) {
-            char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH], str[80];
+            char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
             cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
             this->hostName = host_name;
         } else {
@@ -56,9 +56,9 @@ void Receiver::init(const std::string& host,
         this->eventID = eventID;
         this->getAllEvents = getAllEvents;
         this->maxBufferSize = maxBufferSize;
+        this->cmYieldTimeout = cmYieldTimeout; // Set cm_yield timeout
     }
 }
-
 // Start receiving events
 void Receiver::start() {
     if (!running) {
@@ -127,7 +127,6 @@ void Receiver::processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* 
     receiver.processEvent(hBuf, request_id, pheader, pevent);        // Process the event
 }
 
-// Process individual events
 void Receiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
     bool dataJam = false;
     int size, *pdata, id;
@@ -157,50 +156,88 @@ void Receiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader,
 
     firstEvent = false; // After processing the first event
 
-    // Store the event data in the buffer
-    std::vector<char> event(pheader->data_size + sizeof(EVENT_HEADER));
-    std::memcpy(event.data(), pheader, sizeof(EVENT_HEADER));
-    std::memcpy(event.data() + sizeof(EVENT_HEADER), pevent, pheader->data_size);
+    // Create a TMEvent from the received buffer
+    TMEvent timedEvent(pheader, size + sizeof(EVENT_HEADER));
 
     {
         std::lock_guard<std::mutex> lock(bufferMutex);
         if (eventBuffer.size() >= maxBufferSize) {
             eventBuffer.pop_front(); // Remove the oldest event to make space
         }
-        eventBuffer.push_back(std::move(event));
+
+        // Create a TimedEvent with the current timestamp and the constructed TMEvent
+        TimedEvent newTimedEvent;
+        newTimedEvent.timestamp = std::chrono::system_clock::now();
+        newTimedEvent.event = timedEvent;  // Store the TMEvent
+
+        eventBuffer.push_back(std::move(newTimedEvent));
         bufferCV.notify_all(); // Notify any waiting threads
     }
 }
 
-// Retrieve all latest events since the last retrieved index
-std::vector<std::vector<char>> Receiver::getAllLatest(size_t& lastIndex) {
-    std::vector<std::vector<char>> events;
-    std::lock_guard<std::mutex> lock(bufferMutex);
-    while (lastIndex < eventBuffer.size()) {
-        events.push_back(eventBuffer[lastIndex]);
-        ++lastIndex;
-    }
-    return events;
-}
 
-// Retrieve the last N events
-std::vector<std::vector<char>> Receiver::getNLatest(size_t n) {
-    std::vector<std::vector<char>> events;
+// Retrieve the latest N events (including timestamps)
+std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n) {
+    std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
+    
     size_t start = eventBuffer.size() > n ? eventBuffer.size() - n : 0;
     for (size_t i = start; i < eventBuffer.size(); ++i) {
-        events.push_back(eventBuffer[i]);
+        events.push_back(eventBuffer[i]); // Directly use the entire TimedEvent from the buffer
     }
     return events;
 }
 
-// Retrieve the whole event buffer
-std::vector<std::vector<char>> Receiver::getWholeBuffer() {
-    std::vector<std::vector<char>> events;
+// Retrieve the latest N events since a specific timestamp (including timestamps)
+std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
+    std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
-    events.insert(events.end(), eventBuffer.begin(), eventBuffer.end());
+
+    // Create a temporary list to store events that are after the 'since' timestamp
+    std::vector<TimedEvent> filteredEvents;
+
+    // Filter events based on the 'since' timestamp
+    for (const auto& timedEvent : eventBuffer) {
+        if (timedEvent.timestamp > since) {
+            filteredEvents.push_back(timedEvent); // Store the entire TimedEvent (including timestamp)
+        }
+    }
+
+    // Now return the most recent 'n' events from the filtered list
+    size_t start = filteredEvents.size() > n ? filteredEvents.size() - n : 0;
+    for (size_t i = start; i < filteredEvents.size(); ++i) {
+        events.push_back(filteredEvents[i]);
+    }
+
     return events;
 }
+
+// Retrieve events since a specific timestamp (including timestamps)
+std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(std::chrono::system_clock::time_point since) {
+    std::vector<TimedEvent> events;
+    std::lock_guard<std::mutex> lock(bufferMutex);
+
+    // Iterate through the event buffer starting from the earliest event
+    for (auto it = eventBuffer.begin(); it != eventBuffer.end(); ++it) {
+        if (it->timestamp > since) {
+            // Add all subsequent events (already in time order) to the result
+            for (; it != eventBuffer.end(); ++it) {
+                events.push_back(*it); // Directly use the entire TimedEvent from the buffer
+            }
+            break; // Exit the loop once we find the first event after the given timestamp
+        }
+    }
+    return events;
+}
+
+// Retrieve all events (including timestamps)
+std::vector<Receiver::TimedEvent> Receiver::getWholeBuffer() {
+    std::vector<TimedEvent> events;
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    events.insert(events.end(), eventBuffer.begin(), eventBuffer.end()); // Directly use TimedEvent from the buffer
+    return events;
+}
+
 
 // Getter for running state (thread-safe)
 bool Receiver::isListeningForEvents() const {

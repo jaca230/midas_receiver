@@ -8,86 +8,75 @@
 #include <mutex>
 #include <condition_variable>
 #include <string>
+#include <chrono>
 #include "midas.h"
+#include "midasio.h"
 
 class Receiver {
 public:
-    // Get the singleton instance
+    struct TimedEvent {
+        std::chrono::system_clock::time_point timestamp; //TMEvent has a timestamp, but it's on accurate to seconds
+        TMEvent event;
+    };
+
     static Receiver& getInstance();
 
-    // Initialize the receiver with parameters (only the first time)
     void init(const std::string& host = "", 
               const std::string& bufferName = "SYSTEM", 
               const std::string& clientName = "Event Receiver", 
               int eventID = EVENTID_ALL, 
               bool getAllEvents = true, 
-              size_t maxBufferSize = 1000);
+              size_t maxBufferSize = 1000, 
+              int cmYieldTimeout = 300); // Default timeout is 300 ms
 
-    // Start and stop the receiver
     void start();
     void stop();
 
-    // Buffer retrieval methods
-    std::vector<std::vector<char>> getAllLatest(size_t& lastIndex);
-    std::vector<std::vector<char>> getNLatest(size_t n);
-    std::vector<std::vector<char>> getWholeBuffer();
+    std::vector<TimedEvent> getWholeBuffer(); // Retrieve all events with timestamps
+    std::vector<TimedEvent> getLatestEvents(size_t n); // Events excluding timestamps
+    std::vector<TimedEvent> getLatestEvents(std::chrono::system_clock::time_point since);
+    std::vector<TimedEvent> getLatestEvents(size_t n, std::chrono::system_clock::time_point since);
 
-    // Getter for status (thread-safe)
     INT getStatus() const;
-
-    // Getter for running state (thread-safe)
     bool isListeningForEvents() const;
 
 private:
-    // Constructor is private to enforce singleton pattern
     Receiver();
-
-    // Destructor
     ~Receiver();
 
-    // Add the static callback function declaration
     static void processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent);
 
-    // Main worker thread
     void run();
-
-    // Event processing
     void processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent);
 
-    // Configuration parameters
     std::string hostName;
     std::string bufferName;
     std::string clientName;
     int eventID;
     bool getAllEvents;
     size_t maxBufferSize;
+    int cmYieldTimeout;
 
-    // MIDAS buffer management
     HNDLE hBufEvent;
     INT requestID;
 
-    // Event integrity checks
-    std::vector<int> serialNumbers = std::vector<int>(10, 0); // Serial numbers for each event ID (0-9)
-    bool firstEvent = true;                                  // Flag to track the first event
-    size_t countMismatches = 0;                              // Count of serial number mismatches
-    size_t eventByteCount = 0;                               // Accumulated byte count
+    std::vector<int> serialNumbers = std::vector<int>(10, 0);
+    bool firstEvent = true;
+    size_t countMismatches = 0;
+    size_t eventByteCount = 0;
 
-    // FIFO buffer
-    std::deque<std::vector<char>> eventBuffer;
+    std::deque<TimedEvent> eventBuffer;
     std::mutex bufferMutex;
     std::condition_variable bufferCV;
 
-    // Thread control
     std::thread workerThread;
     std::atomic<bool> running;
     std::atomic<bool> listeningForEvents;
 
-    // Singleton instance
     static Receiver* instance;
     static std::mutex initMutex;
 
-    // Status variable to track receiver status
-    mutable std::mutex statusMutex;  // Protect access to status
+    mutable std::mutex statusMutex;
     INT status;
 };
 
