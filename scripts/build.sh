@@ -7,15 +7,21 @@ display_help() {
     echo "Options:"
     echo "  --overwrite   Overwrite the build directory if it exists"
     echo "  --help        Display this help message"
+    echo "  --copy-libs   Copy installed libraries to /usr/lib64"
     exit 0
 }
 
 # Parse command-line arguments
 overwrite=false
+copy_libs=false
 for arg in "$@"; do
     case $arg in
         --overwrite)
         overwrite=true
+        shift
+        ;;
+        --copy-libs)
+        copy_libs=true
         shift
         ;;
         --help)
@@ -66,3 +72,37 @@ fi
 
 # Run make install with parallel jobs based on the number of processors
 make install -j$(nproc)
+
+# If --copy-libs option is set, copy the libraries to /usr/lib64
+if $copy_libs; then
+    echo "Copying libraries to /usr/lib64..."
+
+    # Default install location for libraries (adjust if needed)
+    LIB_DIR=$(realpath "$script_directory/../lib")
+
+    # Check if the lib directory exists
+    if [ -d "$LIB_DIR" ]; then
+        # Copy all .a files and .so files to /usr/lib64, printing each one
+        for lib in "$LIB_DIR"/*.a; do
+            if [ -e "$lib" ]; then
+                echo "Copying library: $(basename "$lib")"
+                sudo cp "$lib" /usr/lib64/
+            fi
+        done
+
+        for lib in "$LIB_DIR"/*.so; do
+            if [ -e "$lib" ]; then
+                echo "Copying library: $(basename "$lib")"
+                sudo cp "$lib" /usr/lib64/
+            fi
+        done
+
+        # Optionally run ldconfig to update library cache
+        sudo ldconfig
+
+        echo "Libraries successfully copied to /usr/lib64."
+    else
+        echo "Library directory not found: $LIB_DIR"
+    fi
+fi
+
