@@ -1,15 +1,15 @@
-#include "Receiver.h"
+#include "MidasReceiver.h"
 #include <cstring>
 #include <iostream>
 
 #define MAX_EVENT_SIZE (10 * 1024 * 1024)
 
 // Initialize the static member variables
-Receiver* Receiver::instance = nullptr;
-std::mutex Receiver::initMutex;
+MidasReceiver* MidasReceiver::instance = nullptr;
+std::mutex MidasReceiver::initMutex;
 
 // Constructor (private for singleton)
-Receiver::Receiver()
+MidasReceiver::MidasReceiver()
     : hostName(""), 
       bufferName("SYSTEM"), 
       clientName("Event Receiver"), 
@@ -20,28 +20,28 @@ Receiver::Receiver()
       running(false) {}
 
 // Destructor
-Receiver::~Receiver() {
+MidasReceiver::~MidasReceiver() {
     stop();
 }
 
 // Get the singleton instance
-Receiver& Receiver::getInstance() {
+MidasReceiver& MidasReceiver::getInstance() {
     std::lock_guard<std::mutex> lock(initMutex);
 
     if (instance == nullptr) {
-        instance = new Receiver();
+        instance = new MidasReceiver();
     }
     return *instance;
 }
 
 // Initialize receiver with parameters
-void Receiver::init(const std::string& host, 
-                    const std::string& bufferName, 
-                    const std::string& clientName, 
-                    int eventID, 
-                    bool getAllEvents, 
-                    size_t maxBufferSize, 
-                    int cmYieldTimeout) {
+void MidasReceiver::init(const std::string& host, 
+                         const std::string& bufferName, 
+                         const std::string& clientName, 
+                         int eventID, 
+                         bool getAllEvents, 
+                         size_t maxBufferSize, 
+                         int cmYieldTimeout) {
     if (hostName.empty()) {
         if (host.empty()) {
             char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
@@ -60,16 +60,16 @@ void Receiver::init(const std::string& host,
     }
 }
 // Start receiving events
-void Receiver::start() {
+void MidasReceiver::start() {
     if (!running) {
         running = true;
         listeningForEvents = true;
-        workerThread = std::thread(&Receiver::run, this);
+        workerThread = std::thread(&MidasReceiver::run, this);
     }
 }
 
 // Stop receiving events
-void Receiver::stop() {
+void MidasReceiver::stop() {
     if (running) {
         if (workerThread.joinable()) {
             workerThread.join();
@@ -80,34 +80,34 @@ void Receiver::stop() {
 }
 
 // Main worker thread
-void Receiver::run() {
+void MidasReceiver::run() {
     status = cm_connect_experiment(hostName.c_str(), "", clientName.c_str(), nullptr); // Set status during connection
 
     if (status != CM_SUCCESS) {
-        cm_msg(MERROR, "Receiver::run", "Failed to connect to experiment. Status: %d", status);
+        cm_msg(MERROR, "MidasReceiver::run", "Failed to connect to experiment. Status: %d", status);
         listeningForEvents = false;
         return;
     }
 
     status = bm_open_buffer(bufferName.c_str(), MAX_EVENT_SIZE * 2, &hBufEvent); // Set status for buffer opening
     if (status != BM_SUCCESS) {
-        cm_msg(MERROR, "Receiver::run", "Failed to open buffer. Status: %d", status);
+        cm_msg(MERROR, "MidasReceiver::run", "Failed to open buffer. Status: %d", status);
         listeningForEvents = false;
         return;
     }
 
     status = bm_set_cache_size(hBufEvent, 100000, 0); // Update status if cache size fails
     if (status != BM_SUCCESS) {
-        cm_msg(MERROR, "Receiver::run", "Failed to set cache size. Status: %d", status);
+        cm_msg(MERROR, "MidasReceiver::run", "Failed to set cache size. Status: %d", status);
         listeningForEvents = false;
         return;
     }
 
     status = bm_request_event(hBufEvent, (WORD)eventID, TRIGGER_ALL, getAllEvents ? GET_ALL : GET_NONBLOCKING,
-                              &requestID, Receiver::processEventCallback); // Update status when event request is made
+                              &requestID, MidasReceiver::processEventCallback); // Update status when event request is made
 
     if (status != BM_SUCCESS) {
-        cm_msg(MERROR, "Receiver::run", "Failed to request event. Status: %d", status);
+        cm_msg(MERROR, "MidasReceiver::run", "Failed to request event. Status: %d", status);
         listeningForEvents = false;
         return;
     }
@@ -122,12 +122,12 @@ void Receiver::run() {
 }
 
 // Static callback
-void Receiver::processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
-    Receiver& receiver = Receiver::getInstance();  // Get the singleton instance of Receiver
+void MidasReceiver::processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
+    MidasReceiver& receiver = MidasReceiver::getInstance();  // Get the singleton instance of MidasReceiver
     receiver.processEvent(hBuf, request_id, pheader, pevent);        // Process the event
 }
 
-void Receiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
+void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
     bool dataJam = false;
     int size, *pdata, id;
 
@@ -177,7 +177,7 @@ void Receiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader,
 
 
 // Retrieve the latest N events (including timestamps)
-std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n) {
+std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n) {
     std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
     
@@ -189,7 +189,7 @@ std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n) {
 }
 
 // Retrieve the latest N events since a specific timestamp (including timestamps)
-std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
+std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
     std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
 
@@ -213,7 +213,7 @@ std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(size_t n, std::chron
 }
 
 // Retrieve events since a specific timestamp (including timestamps)
-std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(std::chrono::system_clock::time_point since) {
+std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(std::chrono::system_clock::time_point since) {
     std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
 
@@ -231,7 +231,7 @@ std::vector<Receiver::TimedEvent> Receiver::getLatestEvents(std::chrono::system_
 }
 
 // Retrieve all events (including timestamps)
-std::vector<Receiver::TimedEvent> Receiver::getWholeBuffer() {
+std::vector<MidasReceiver::TimedEvent> MidasReceiver::getWholeBuffer() {
     std::vector<TimedEvent> events;
     std::lock_guard<std::mutex> lock(bufferMutex);
     events.insert(events.end(), eventBuffer.begin(), eventBuffer.end()); // Directly use TimedEvent from the buffer
@@ -240,12 +240,12 @@ std::vector<Receiver::TimedEvent> Receiver::getWholeBuffer() {
 
 
 // Getter for running state (thread-safe)
-bool Receiver::isListeningForEvents() const {
+bool MidasReceiver::isListeningForEvents() const {
     return listeningForEvents.load(); // Atomic load of the running state
 }
 
 // Getter for status (thread-safe)
-INT Receiver::getStatus() const {
+INT MidasReceiver::getStatus() const {
     std::lock_guard<std::mutex> lock(statusMutex); // Locking to ensure thread-safety
     return status;
 }

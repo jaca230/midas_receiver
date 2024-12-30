@@ -1,5 +1,5 @@
-#ifndef RECEIVER_H
-#define RECEIVER_H
+#ifndef MIDAS_RECEIVER_H
+#define MIDAS_RECEIVER_H
 
 #include <thread>
 #include <atomic>
@@ -12,14 +12,14 @@
 #include "midas.h"
 #include "midasio.h"
 
-class Receiver {
+class MidasReceiver {
 public:
     struct TimedEvent {
-        std::chrono::system_clock::time_point timestamp; //TMEvent has a timestamp, but it's on accurate to seconds
+        std::chrono::system_clock::time_point timestamp; // TMEvent has a timestamp, but it's only accurate to seconds
         TMEvent event;
     };
 
-    static Receiver& getInstance();
+    static MidasReceiver& getInstance();
 
     void init(const std::string& host = "", 
               const std::string& bufferName = "SYSTEM", 
@@ -41,8 +41,8 @@ public:
     bool isListeningForEvents() const;
 
 private:
-    Receiver();
-    ~Receiver();
+    MidasReceiver();
+    ~MidasReceiver();
 
     static void processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent);
 
@@ -73,11 +73,11 @@ private:
     std::atomic<bool> running;
     std::atomic<bool> listeningForEvents;
 
-    static Receiver* instance;
+    static MidasReceiver* instance;
     static std::mutex initMutex;
 
     mutable std::mutex statusMutex;
     INT status;
 };
 
-#endif // RECEIVER_H
+#endif // MIDAS_RECEIVER_H

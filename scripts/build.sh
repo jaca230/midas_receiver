@@ -7,21 +7,21 @@ display_help() {
     echo "Options:"
     echo "  --overwrite   Overwrite the build directory if it exists"
     echo "  --help        Display this help message"
-    echo "  --copy-libs   Copy installed libraries to /usr/lib64"
+    echo "  --install     Perform a full installation, including copying libraries and headers"
     exit 0
 }
 
 # Parse command-line arguments
 overwrite=false
-copy_libs=false
+install=false
 for arg in "$@"; do
     case $arg in
         --overwrite)
         overwrite=true
         shift
         ;;
-        --copy-libs)
-        copy_libs=true
+        --install)
+        install=true
         shift
         ;;
         --help)
@@ -73,14 +73,15 @@ fi
 # Run make install with parallel jobs based on the number of processors
 make install -j$(nproc)
 
-# If --copy-libs option is set, copy the libraries to /usr/lib64
-if $copy_libs; then
-    echo "Copying libraries to /usr/lib64..."
+# If --install flag is set, perform additional installation steps (copy libraries and headers)
+if $install; then
+    echo "Performing full installation..."
 
-    # Default install location for libraries (adjust if needed)
+    # Default install location for libraries and headers (adjust if needed)
     LIB_DIR=$(realpath "$script_directory/../lib")
+    INCLUDE_DIR=$(realpath "$script_directory/../include")
 
-    # Check if the lib directory exists
+    # Check if the lib directory exists and copy the libraries
     if [ -d "$LIB_DIR" ]; then
         # Copy all .a files and .so files to /usr/lib64, printing each one
         for lib in "$LIB_DIR"/*.a; do
@@ -104,5 +105,22 @@ if $copy_libs; then
     else
         echo "Library directory not found: $LIB_DIR"
     fi
+
+    # Check if the include directory exists and copy the headers
+    if [ -d "$INCLUDE_DIR" ]; then
+        # Copy all header files to /usr/include, converting names to lowercase
+        for header in "$INCLUDE_DIR"/*.h; do
+            if [ -e "$header" ]; then
+                lower_header=$(echo "$header" | tr '[:upper:]' '[:lower:]')
+                echo "Copying header: $(basename "$lower_header")"
+                sudo cp "$header" "/usr/include/$(basename "$lower_header")"
+            fi
+        done
+
+        echo "Headers successfully copied to /usr/include."
+    else
+        echo "Include directory not found: $INCLUDE_DIR"
+    fi
 fi
 
+echo "Installation complete."

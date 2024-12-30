@@ -1,4 +1,4 @@
-#include "Receiver.h"
+#include "MidasReceiver.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -23,8 +23,8 @@ int main(int argc, char* argv[]) {
               << " ms and retrieving " << numEvents << " events per iteration." << std::endl;
 
     // Create and start the Receiver
-    Receiver& receiver = Receiver::getInstance();
-    receiver.init(
+    MidasReceiver& midasReceiver = MidasReceiver::getInstance();
+    midasReceiver.init(
         "",                   // Host name (default is empty, resolved via cm_get_environment)
         "BUF001",             // Buffer name to use
         "Event Receiver",     // Client name to register
@@ -37,14 +37,14 @@ int main(int argc, char* argv[]) {
     // Initialize the timestamp tracking
     auto lastTimestamp = std::chrono::system_clock::now();
 
-    receiver.start();
+    midasReceiver.start();
 
     // Periodically retrieve and print events
-    while (receiver.isListeningForEvents()) {
+    while (midasReceiver.isListeningForEvents()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
 
         // Retrieve the latest events after the last timestamp
-        auto timedEvents = receiver.getLatestEvents(numEvents, lastTimestamp);
+        auto timedEvents = midasReceiver.getLatestEvents(numEvents, lastTimestamp);
         
         if (timedEvents.empty()) {
             std::cout << "[INFO] No new events in the buffer." << std::endl;
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Stopping Receiver" << std::endl;
-    receiver.stop();
+    midasReceiver.stop();
     std::cout << "Exiting Program" << std::endl;
 
     return 0;

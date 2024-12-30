@@ -2,15 +2,26 @@ cmake_minimum_required(VERSION 3.0)
 
 project(midas_receiver)
 
-# Check environment variables
+# Check if the MIDASSYS environment variable is defined
 if (NOT DEFINED ENV{MIDASSYS})
     message(STATUS "MIDASSYS environment variable not defined.")
-    if(EXISTS "${CMAKE_SOURCE_DIR}/environment_variables.txt")
+
+    # Check if environment_variables.txt exists in the specified directory
+    if(EXISTS "${CMAKE_SOURCE_DIR}/scripts/environment/environment_variables.txt")
         message(STATUS "Found environment_variables.txt. Checking its contents.")
-        file(READ "${CMAKE_SOURCE_DIR}/environment_variables.txt" ENV_VARS_CONTENTS)
+        
+        # Read the contents of the environment_variables.txt
+        file(READ "${CMAKE_SOURCE_DIR}/scripts/environment/environment_variables.txt" ENV_VARS_CONTENTS)
+        
+        # Check if MIDASSYS is defined within the environment_variables.txt
         if(NOT ENV_VARS_CONTENTS MATCHES "MIDASSYS=.*")
             message(STATUS "MIDASSYS is not defined in environment_variables.txt. Running detect_environment.sh.")
-            execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/detect_environment.sh" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} RESULT_VARIABLE DETECT_ENV_RESULT)
+            
+            # Run the detect_environment.sh script to automatically detect environment
+            execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/environment/detect_environment.sh"
+                            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                            RESULT_VARIABLE DETECT_ENV_RESULT)
+            
             if (DETECT_ENV_RESULT EQUAL 0)
                 message(STATUS "Environment detection completed.")
             else()
@@ -19,7 +30,12 @@ if (NOT DEFINED ENV{MIDASSYS})
         endif()
     else()
         message(STATUS "environment_variables.txt not found. Running detect_environment.sh.")
-        execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/detect_environment.sh" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} RESULT_VARIABLE DETECT_ENV_RESULT)
+        
+        # Run detect_environment.sh if environment_variables.txt does not exist
+        execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/environment/detect_environment.sh"
+                        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                        RESULT_VARIABLE DETECT_ENV_RESULT)
+        
         if (DETECT_ENV_RESULT EQUAL 0)
             message(STATUS "Environment detection completed.")
         else()
@@ -27,18 +43,24 @@ if (NOT DEFINED ENV{MIDASSYS})
         endif()
     endif()
 
+    # Now attempt to run setup_environment.sh to ensure environment variables are set
     message(STATUS "Running setup_environment.sh.")
-    execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/setup_environment.sh" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} RESULT_VARIABLE SETUP_ENV_RESULT)
+    execute_process(COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/environment/setup_environment.sh"
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    RESULT_VARIABLE SETUP_ENV_RESULT)
+    
     if (SETUP_ENV_RESULT EQUAL 0)
         message(STATUS "Environment setup completed.")
     else()
         message(SEND_ERROR "Failed to set up environment. Please check setup_environment.sh.")
     endif()
 
+    # Final check if MIDASSYS environment variable is still not defined
     if (NOT DEFINED ENV{MIDASSYS})
         message(SEND_ERROR "MIDASSYS environment variable is still not defined after running setup.")
     endif()
 endif()
+
 
 file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
