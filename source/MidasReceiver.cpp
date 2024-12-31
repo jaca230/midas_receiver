@@ -121,10 +121,22 @@ void MidasReceiver::run() {
 
 }
 
-// Static callback
+// Static callback: process event
 void MidasReceiver::processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
-    MidasReceiver& receiver = MidasReceiver::getInstance();  // Get the singleton instance of MidasReceiver
-    receiver.processEvent(hBuf, request_id, pheader, pevent);        // Process the event
+    MidasReceiver& receiver = MidasReceiver::getInstance();
+    receiver.processEvent(hBuf, request_id, pheader, pevent);
+}
+
+// Static callback: process message
+void MidasReceiver::processMessageCallback(HNDLE hBuf, HNDLE id, EVENT_HEADER* pheader, void* message) {
+    MidasReceiver& receiver = MidasReceiver::getInstance();
+    receiver.processMessage(hBuf, id, pheader, message);
+}
+
+// Static callback: process transition
+INT MidasReceiver::processTransitionCallback(INT run_number, char* error) {
+    MidasReceiver& receiver = MidasReceiver::getInstance();
+    return receiver.processTransition(run_number, error);
 }
 
 void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
@@ -160,7 +172,7 @@ void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* phe
     TMEvent timedEvent(pheader, size + sizeof(EVENT_HEADER));
 
     {
-        std::lock_guard<std::mutex> lock(bufferMutex);
+        std::lock_guard<std::mutex> lock(eventBufferMutex);
         if (eventBuffer.size() >= maxBufferSize) {
             eventBuffer.pop_front(); // Remove the oldest event to make space
         }
@@ -175,11 +187,47 @@ void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* phe
     }
 }
 
+// Process message (add to buffer with timestamp)
+void MidasReceiver::processMessage(HNDLE hBuf, HNDLE id, EVENT_HEADER* pheader, void* message) {
+    TimedMessage timedMessage;
+    timedMessage.timestamp = std::chrono::system_clock::now();
+    timedMessage.message = message; // Store the message data
+
+    // Lock buffer for thread safety
+    {
+        std::lock_guard<std::mutex> lock(messageBufferMutex);
+        if (messageBuffer.size() >= maxBufferSize) {
+            messageBuffer.pop_front(); // Remove oldest message if buffer is full
+        }
+        messageBuffer.push_back(timedMessage);
+    }
+}
+
+// Process transition (add to buffer with timestamp)
+INT MidasReceiver::processTransition(INT run_number, char* error) {
+    TimedTransition timedTransition;
+    timedTransition.timestamp = std::chrono::system_clock::now();
+    timedTransition.run_number = run_number;
+    std::strncpy(timedTransition.error, error, sizeof(timedTransition.error) - 1);
+
+    // Lock buffer for thread safety
+    {
+        std::lock_guard<std::mutex> lock(transitionBufferMutex);
+        if (transitionBuffer.size() >= maxBufferSize) {
+            transitionBuffer.pop_front(); // Remove oldest transition if buffer is full
+        }
+        transitionBuffer.push_back(timedTransition);
+    }
+
+    cm_msg(MINFO, "processTransition", "Processing transition for run: %d", run_number);
+    return SUCCESS;
+}
+
 
 // Retrieve the latest N events (including timestamps)
 std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n) {
     std::vector<TimedEvent> events;
-    std::lock_guard<std::mutex> lock(bufferMutex);
+    std::lock_guard<std::mutex> lock(eventBufferMutex);
     
     size_t start = eventBuffer.size() > n ? eventBuffer.size() - n : 0;
     for (size_t i = start; i < eventBuffer.size(); ++i) {
@@ -191,7 +239,7 @@ std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n) 
 // Retrieve the latest N events since a specific timestamp (including timestamps)
 std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
     std::vector<TimedEvent> events;
-    std::lock_guard<std::mutex> lock(bufferMutex);
+    std::lock_guard<std::mutex> lock(eventBufferMutex);
 
     // Create a temporary list to store events that are after the 'since' timestamp
     std::vector<TimedEvent> filteredEvents;
@@ -215,7 +263,7 @@ std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n, 
 // Retrieve events since a specific timestamp (including timestamps)
 std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(std::chrono::system_clock::time_point since) {
     std::vector<TimedEvent> events;
-    std::lock_guard<std::mutex> lock(bufferMutex);
+    std::lock_guard<std::mutex> lock(eventBufferMutex);
 
     // Iterate through the event buffer starting from the earliest event
     for (auto it = eventBuffer.begin(); it != eventBuffer.end(); ++it) {
@@ -233,10 +281,135 @@ std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(std::chron
 // Retrieve all events (including timestamps)
 std::vector<MidasReceiver::TimedEvent> MidasReceiver::getWholeBuffer() {
     std::vector<TimedEvent> events;
-    std::lock_guard<std::mutex> lock(bufferMutex);
+    std::lock_guard<std::mutex> lock(eventBufferMutex);
     events.insert(events.end(), eventBuffer.begin(), eventBuffer.end()); // Directly use TimedEvent from the buffer
     return events;
 }
+
+// Retrieve all messages (including timestamps)
+std::vector<MidasReceiver::TimedMessage> MidasReceiver::getMessageBuffer() {
+    std::vector<TimedMessage> messages;
+    std::lock_guard<std::mutex> lock(messageBufferMutex); // Ensure thread safety
+    messages.insert(messages.end(), messageBuffer.begin(), messageBuffer.end()); // Directly use TimedMessage from the buffer
+    return messages;
+}
+
+// Retrieve the latest N messages (including timestamps)
+std::vector<MidasReceiver::TimedMessage> MidasReceiver::getLatestMessages(size_t n) {
+    std::vector<TimedMessage> messages;
+    std::lock_guard<std::mutex> lock(messageBufferMutex);
+
+    size_t start = messageBuffer.size() > n ? messageBuffer.size() - n : 0;
+    for (size_t i = start; i < messageBuffer.size(); ++i) {
+        messages.push_back(messageBuffer[i]); // Directly use the entire TimedMessage from the buffer
+    }
+    return messages;
+}
+
+// Retrieve the latest N messages since a specific timestamp (including timestamps)
+std::vector<MidasReceiver::TimedMessage> MidasReceiver::getLatestMessages(size_t n, std::chrono::system_clock::time_point since) {
+    std::vector<TimedMessage> messages;
+    std::lock_guard<std::mutex> lock(messageBufferMutex);
+
+    // Create a temporary list to store messages that are after the 'since' timestamp
+    std::vector<TimedMessage> filteredMessages;
+
+    // Filter messages based on the 'since' timestamp
+    for (const auto& timedMessage : messageBuffer) {
+        if (timedMessage.timestamp > since) {
+            filteredMessages.push_back(timedMessage); // Store the entire TimedMessage (including timestamp)
+        }
+    }
+
+    // Now return the most recent 'n' messages from the filtered list
+    size_t start = filteredMessages.size() > n ? filteredMessages.size() - n : 0;
+    for (size_t i = start; i < filteredMessages.size(); ++i) {
+        messages.push_back(filteredMessages[i]);
+    }
+
+    return messages;
+}
+
+// Retrieve messages since a specific timestamp (including timestamps)
+std::vector<MidasReceiver::TimedMessage> MidasReceiver::getLatestMessages(std::chrono::system_clock::time_point since) {
+    std::vector<TimedMessage> messages;
+    std::lock_guard<std::mutex> lock(messageBufferMutex);
+
+    // Iterate through the message buffer starting from the earliest message
+    for (auto it = messageBuffer.begin(); it != messageBuffer.end(); ++it) {
+        if (it->timestamp > since) {
+            // Add all subsequent messages (already in time order) to the result
+            for (; it != messageBuffer.end(); ++it) {
+                messages.push_back(*it); // Directly use the entire TimedMessage from the buffer
+            }
+            break; // Exit the loop once we find the first message after the given timestamp
+        }
+    }
+    return messages;
+}
+
+// Retrieve all transitions (including timestamps)
+std::vector<MidasReceiver::TimedTransition> MidasReceiver::getTransitionBuffer() {
+    std::vector<TimedTransition> transitions;
+    std::lock_guard<std::mutex> lock(transitionBufferMutex); // Ensure thread safety
+    transitions.insert(transitions.end(), transitionBuffer.begin(), transitionBuffer.end()); // Directly use TimedTransition from the buffer
+    return transitions;
+}
+
+// Retrieve the latest N transitions (including timestamps)
+std::vector<MidasReceiver::TimedTransition> MidasReceiver::getLatestTransitions(size_t n) {
+    std::vector<TimedTransition> transitions;
+    std::lock_guard<std::mutex> lock(transitionBufferMutex);
+
+    size_t start = transitionBuffer.size() > n ? transitionBuffer.size() - n : 0;
+    for (size_t i = start; i < transitionBuffer.size(); ++i) {
+        transitions.push_back(transitionBuffer[i]); // Directly use the entire TimedTransition from the buffer
+    }
+    return transitions;
+}
+
+// Retrieve the latest N transitions since a specific timestamp (including timestamps)
+std::vector<MidasReceiver::TimedTransition> MidasReceiver::getLatestTransitions(size_t n, std::chrono::system_clock::time_point since) {
+    std::vector<TimedTransition> transitions;
+    std::lock_guard<std::mutex> lock(transitionBufferMutex);
+
+    // Create a temporary list to store transitions that are after the 'since' timestamp
+    std::vector<TimedTransition> filteredTransitions;
+
+    // Filter transitions based on the 'since' timestamp
+    for (const auto& timedTransition : transitionBuffer) {
+        if (timedTransition.timestamp > since) {
+            filteredTransitions.push_back(timedTransition); // Store the entire TimedTransition (including timestamp)
+        }
+    }
+
+    // Now return the most recent 'n' transitions from the filtered list
+    size_t start = filteredTransitions.size() > n ? filteredTransitions.size() - n : 0;
+    for (size_t i = start; i < filteredTransitions.size(); ++i) {
+        transitions.push_back(filteredTransitions[i]);
+    }
+
+    return transitions;
+}
+
+// Retrieve transitions since a specific timestamp (including timestamps)
+std::vector<MidasReceiver::TimedTransition> MidasReceiver::getLatestTransitions(std::chrono::system_clock::time_point since) {
+    std::vector<TimedTransition> transitions;
+    std::lock_guard<std::mutex> lock(transitionBufferMutex);
+
+    // Iterate through the transition buffer starting from the earliest transition
+    for (auto it = transitionBuffer.begin(); it != transitionBuffer.end(); ++it) {
+        if (it->timestamp > since) {
+            // Add all subsequent transitions (already in time order) to the result
+            for (; it != transitionBuffer.end(); ++it) {
+                transitions.push_back(*it); // Directly use the entire TimedTransition from the buffer
+            }
+            break; // Exit the loop once we find the first transition after the given timestamp
+        }
+    }
+    return transitions;
+}
+
 
 
 // Getter for running state (thread-safe)
