@@ -26,6 +26,7 @@ int main(int argc, char* argv[]) {
     MidasReceiver& midasReceiver = MidasReceiver::getInstance();
     midasReceiver.init(
         "",                   // Host name (default is empty, resolved via cm_get_environment)
+        "",                   // Expt name (default is empty, resolved via cm_get_environment)
         "BUF001",             // Buffer name to use
         "Event Receiver",     // Client name to register
         EVENTID_ALL,          // Event ID to request (default: all events)

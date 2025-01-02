@@ -31,6 +31,7 @@ public:
     static MidasReceiver& getInstance();
 
     void init(const std::string& host = "", 
+              const std::string& expt = "",
               const std::string& bufferName = "SYSTEM", 
               const std::string& clientName = "Event Receiver", 
               int eventID = EVENTID_ALL, 
@@ -73,6 +74,7 @@ private:
     INT processTransition(INT run_number, char* error);
 
     std::string hostName;
+    std::string exptName;
     std::string bufferName;
     std::string clientName;
     int eventID;

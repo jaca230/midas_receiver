@@ -1,4 +1,7 @@
 # Ignore build directories and CMake files
+/bin/
+/lib/
+/deprecated/
 /build/
 /CMakeFiles/
 /CMakeCache.txt

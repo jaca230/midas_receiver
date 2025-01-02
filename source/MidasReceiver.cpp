@@ -10,7 +10,8 @@ std::mutex MidasReceiver::initMutex;
 
 // Constructor (private for singleton)
 MidasReceiver::MidasReceiver()
-    : hostName(""), 
+    : hostName(""),
+      exptName(""), 
       bufferName("SYSTEM"), 
       clientName("Event Receiver"), 
       eventID(EVENTID_ALL), 
@@ -35,29 +36,35 @@ MidasReceiver& MidasReceiver::getInstance() {
 }
 
 // Initialize receiver with parameters
-void MidasReceiver::init(const std::string& host, 
+void MidasReceiver::init(const std::string& host,
+                         const std::string& expt,
                          const std::string& bufferName, 
                          const std::string& clientName, 
                          int eventID, 
                          bool getAllEvents, 
                          size_t maxBufferSize, 
                          int cmYieldTimeout) {
-    if (hostName.empty()) {
-        if (host.empty()) {
-            char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
-            cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
-            this->hostName = host_name;
-        } else {
-            this->hostName = host;
-        }
-
-        this->bufferName = bufferName.empty() ? this->bufferName : bufferName;
-        this->clientName = clientName.empty() ? this->clientName : clientName;
-        this->eventID = eventID;
-        this->getAllEvents = getAllEvents;
-        this->maxBufferSize = maxBufferSize;
-        this->cmYieldTimeout = cmYieldTimeout; // Set cm_yield timeout
+    if (host.empty()) {
+        char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
+        cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
+        this->hostName = host_name;
+    } else {
+        this->hostName = host;
     }
+    if (expt.empty()) {
+        char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
+        cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
+        this->exptName = expt_name;
+    } else {
+        this->exptName = expt;
+    }
+
+    this->bufferName = bufferName.empty() ? this->bufferName : bufferName;
+    this->clientName = clientName.empty() ? this->clientName : clientName;
+    this->eventID = eventID;
+    this->getAllEvents = getAllEvents;
+    this->maxBufferSize = maxBufferSize;
+    this->cmYieldTimeout = cmYieldTimeout; // Set cm_yield timeout
 }
 // Start receiving events
 void MidasReceiver::start() {
@@ -81,7 +88,7 @@ void MidasReceiver::stop() {
 
 // Main worker thread
 void MidasReceiver::run() {
-    status = cm_connect_experiment(hostName.c_str(), "", clientName.c_str(), nullptr); // Set status during connection
+    status = cm_connect_experiment(hostName.c_str(), exptName.c_str(), clientName.c_str(), nullptr); // Set status during connection
 
     if (status != CM_SUCCESS) {
         cm_msg(MERROR, "MidasReceiver::run", "Failed to connect to experiment. Status: %d", status);
