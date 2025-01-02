@@ -1,113 +1,76 @@
 #ifndef MIDAS_RECEIVER_H
 #define MIDAS_RECEIVER_H
 
-#include <thread>
-#include <atomic>
-#include <deque>
+#include <string>
 #include <vector>
 #include <mutex>
-#include <condition_variable>
-#include <string>
 #include <chrono>
+#include <thread>
+#include <deque>
+#include <memory>
 #include "midas.h"
 #include "midasio.h"
+#include "ReceivedMidasData.h"
+
 
 class MidasReceiver {
 public:
-    struct TimedEvent {
-        std::chrono::system_clock::time_point timestamp; // TMEvent has a timestamp, but it's only accurate to seconds
-        TMEvent event;
-    };
-    struct TimedMessage {
-        std::chrono::system_clock::time_point timestamp;
-        void* message; // Message data
-    };
-    struct TimedTransition {
-        std::chrono::system_clock::time_point timestamp;
-        INT run_number;
-        char error[256]; // Assuming a fixed-size error message
-    };
+    // Constructor for common parameters
+    MidasReceiver(const std::string& host,
+                  const std::string& exp,
+                  const std::string& clientName, 
+                  size_t maxBufferSize, 
+                  int cmYieldTimeout);
 
-    static MidasReceiver& getInstance();
+    // Virtual destructor for proper cleanup in derived classes
+    virtual ~MidasReceiver();
 
-    void init(const std::string& host = "", 
-              const std::string& bufferName = "SYSTEM", 
-              const std::string& clientName = "Event Receiver", 
-              int eventID = EVENTID_ALL, 
-              bool getAllEvents = true, 
-              size_t maxBufferSize = 1000, 
-              int cmYieldTimeout = 300); // Default timeout is 300 ms
+    // Virtual methods to be overridden by derived classes
+    virtual void start();
+    virtual void stop();
+    virtual void run();
 
-    void start();
-    void stop();
+    // Accessor methods
+    const std::string& getHostName() const;
+    const std::string& getExpName() const;
+    const std::string& getClientName() const;
+    size_t getMaxBufferSize() const;
+    int getCmYieldTimeout() const;
+    bool isListeningForData() const;
 
-    std::vector<TimedEvent> getWholeBuffer(); // Retrieve all events with timestamps
-    std::vector<TimedEvent> getLatestEvents(size_t n); // Events excluding timestamps
-    std::vector<TimedEvent> getLatestEvents(std::chrono::system_clock::time_point since);
-    std::vector<TimedEvent> getLatestEvents(size_t n, std::chrono::system_clock::time_point since);
+    // Setter methods
+    void setHostName(const std::string& host);
+    void setExpName(const std::string& exp);
+    void setClientName(const std::string& client);
+    void setMaxBufferSize(size_t size);
+    void setCmYieldTimeout(int timeout);
+    void setListeningForData(bool listening);
 
-    std::vector<TimedMessage> getMessageBuffer(); // Retrieve all messages with timestamps
-    std::vector<TimedMessage> getLatestMessages(size_t n);
-    std::vector<TimedMessage> getLatestMessages(std::chrono::system_clock::time_point since);
-    std::vector<TimedMessage> getLatestMessages(size_t n, std::chrono::system_clock::time_point since);
+    // Methods to get the latest events (ReceivedMidasData)
+    virtual std::vector<std::shared_ptr<ReceivedMidasData>> getLatestData(size_t n);
+    virtual std::vector<std::shared_ptr<ReceivedMidasData>> getLatestData(size_t n, std::chrono::system_clock::time_point since);
+    virtual std::vector<std::shared_ptr<ReceivedMidasData>> getLatestData(std::chrono::system_clock::time_point since);
+    virtual std::vector<std::shared_ptr<ReceivedMidasData>> getDataInBuffer();
 
-    std::vector<TimedTransition> getTransitionBuffer(); // Retrieve all transitions with timestamps
-    std::vector<TimedTransition> getLatestTransitions(size_t n);
-    std::vector<TimedTransition> getLatestTransitions(std::chrono::system_clock::time_point since);
-    std::vector<TimedTransition> getLatestTransitions(size_t n, std::chrono::system_clock::time_point since);
 
-    INT getStatus() const;
-    bool isListeningForEvents() const;
 
-private:
-    MidasReceiver();
-    ~MidasReceiver();
-
-    static void processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent);
-    static void processMessageCallback(HNDLE hBuf, HNDLE id, EVENT_HEADER* pheader, void* message);
-    static INT processTransitionCallback(INT run_number, char* error);
-
-    void run();
-    void processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent);
-    void processMessage(HNDLE hBuf, HNDLE id, EVENT_HEADER* pheader, void* message);
-    INT processTransition(INT run_number, char* error);
-
+protected:
     std::string hostName;
-    std::string bufferName;
+    std::string expName;
     std::string clientName;
-    int eventID;
-    bool getAllEvents;
     size_t maxBufferSize;
     int cmYieldTimeout;
-
-    HNDLE hBufEvent;
-    INT requestID;
-
-    std::vector<int> serialNumbers = std::vector<int>(10, 0);
-    bool firstEvent = true;
-    size_t countMismatches = 0;
-    size_t eventByteCount = 0;
-
-    // Buffers and mutexes
-    std::deque<TimedEvent> eventBuffer;
-    std::deque<TimedMessage> messageBuffer;
-    std::deque<TimedTransition> transitionBuffer;
-    
-    std::mutex eventBufferMutex;
-    std::mutex messageBufferMutex;
-    std::mutex transitionBufferMutex;
-
-    std::condition_variable bufferCV;
+    bool running;
+    bool listeningForData;
+    int status;
 
     std::thread workerThread;
-    std::atomic<bool> running;
-    std::atomic<bool> listeningForEvents;
 
-    static MidasReceiver* instance;
-    static std::mutex initMutex;
-
-    mutable std::mutex statusMutex;
-    INT status;
+    // Buffer to store ReceivedMidasData objects
+    std::deque<std::shared_ptr<ReceivedMidasData>> eventBuffer;
+    
+    // Mutex for thread safety when accessing the eventBuffer
+    std::mutex eventBufferMutex;
 };
 
 #endif // MIDAS_RECEIVER_H
