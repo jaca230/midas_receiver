@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     midasReceiver.init(
         "",                   // Host name (default is empty, resolved via cm_get_environment)
         "",                   // Expt name (default is empty, resolved via cm_get_environment)
-        "BUF001",             // Buffer name to use
+        "SYSTEM",             // Buffer name to use
         "Event Receiver",     // Client name to register
         EVENTID_ALL,          // Event ID to request (default: all events)
         true,                 // Whether to get all events (default: true)
@@ -61,8 +61,10 @@ int main(int argc, char* argv[]) {
 
             // Print the events and their details
             for (size_t i = 0; i < events.size(); ++i) {
-                const auto& event = events[i];
+                auto& event = events[i];
                 const auto& timestamp = timestamps[i];
+
+                event.FindAllBanks();
 
                 // Print event details
                 std::cout << "[EVENT] Received event with size: " << event.data_size << " bytes" << std::endl;
