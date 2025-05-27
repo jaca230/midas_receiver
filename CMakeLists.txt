@@ -111,8 +111,14 @@ target_include_directories(receiver_lib_test PRIVATE
    ${CMAKE_SOURCE_DIR}/include
 )
 
-set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}")
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Install path prefix." FORCE)
+endif()
+
 
 install(TARGETS midas_receiver_test DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(TARGETS receiver_lib_test DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(TARGETS midas_receiver_lib DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+
+# Install headers
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
