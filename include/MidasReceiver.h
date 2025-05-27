@@ -59,6 +59,7 @@ public:
 
     INT getStatus() const;
     bool isListeningForEvents() const;
+    bool IsRunning() const;
 
 private:
     MidasReceiver();

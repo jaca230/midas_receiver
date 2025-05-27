@@ -419,10 +419,16 @@ std::vector<MidasReceiver::TimedTransition> MidasReceiver::getLatestTransitions(
 
 
 
-// Getter for running state (thread-safe)
+// Getter for listening state (thread-safe)
 bool MidasReceiver::isListeningForEvents() const {
     return listeningForEvents.load(); // Atomic load of the running state
 }
+
+// Getter for running state (thread-safe)
+bool MidasReceiver::IsRunning() const {
+    return running.load();
+}
+
 
 // Getter for status (thread-safe)
 INT MidasReceiver::getStatus() const {

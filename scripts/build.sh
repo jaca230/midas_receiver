@@ -34,20 +34,24 @@ for arg in "$@"; do
     esac
 done
 
-# Get the directory of the script
+# Get the directory of this build script
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
     DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
     SOURCE=$(readlink "$SOURCE")
     [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
-script_directory=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
+build_script_dir=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
+readonly build_script_dir
+echo "Build script directory resolved as: $build_script_dir"
 
 # Always source setup_env.sh with --quiet
-source "$script_directory/environment/setup_environment.sh" -q
+source "$build_script_dir/environment/setup_environment.sh" -q
+echo "Environment script sourced."
 
 # Build directory path
-build_directory=$(realpath "$script_directory/../build")
+build_directory=$(realpath "$build_script_dir/../build")
+echo "Build directory resolved as: $build_directory"
 
 # Remove the build directory if --overwrite flag is set
 if $overwrite && [ -d "$build_directory" ]; then
@@ -78,29 +82,19 @@ if $install; then
     echo "Performing full installation..."
 
     # Default install location for libraries and headers (adjust if needed)
-    LIB_DIR=$(realpath "$script_directory/../lib")
-    INCLUDE_DIR=$(realpath "$script_directory/../include")
+    LIB_DIR=$(realpath "$build_script_dir/../lib")
+    INCLUDE_DIR=$(realpath "$build_script_dir/../include")
 
     # Check if the lib directory exists and copy the libraries
     if [ -d "$LIB_DIR" ]; then
-        # Copy all .a files and .so files to /usr/lib64, printing each one
-        for lib in "$LIB_DIR"/*.a; do
+        for lib in "$LIB_DIR"/*.a "$LIB_DIR"/*.so; do
             if [ -e "$lib" ]; then
                 echo "Copying library: $(basename "$lib")"
                 sudo cp "$lib" /usr/lib64/
             fi
         done
 
-        for lib in "$LIB_DIR"/*.so; do
-            if [ -e "$lib" ]; then
-                echo "Copying library: $(basename "$lib")"
-                sudo cp "$lib" /usr/lib64/
-            fi
-        done
-
-        # Optionally run ldconfig to update library cache
         sudo ldconfig
-
         echo "Libraries successfully copied to /usr/lib64."
     else
         echo "Library directory not found: $LIB_DIR"
@@ -108,7 +102,6 @@ if $install; then
 
     # Check if the include directory exists and copy the headers
     if [ -d "$INCLUDE_DIR" ]; then
-        # Copy all header files to /usr/include, converting names to lowercase
         for header in "$INCLUDE_DIR"/*.h; do
             if [ -e "$header" ]; then
                 lower_header=$(echo "$header" | tr '[:upper:]' '[:lower:]')
