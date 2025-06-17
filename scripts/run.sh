@@ -1,73 +1,71 @@
 #!/bin/bash
 
-# Function to display help
-display_help() {
-    echo "Usage: $0 [options] -- [executable args]"
+# Get the absolute path of the script directory
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+BASE_DIR=$(realpath "$SCRIPT_DIR/..")
+EXECUTABLE="$BASE_DIR/bin/receiver_lib_test"
+
+# Variables for options
+PRELOAD_LIBS=""
+DEBUG=false
+VALGRIND=false
+EXE_ARGS=()
+
+# Help message
+show_help() {
+    echo "Usage: ./run.sh [OPTIONS] [-- <args>]"
     echo
     echo "Options:"
-    echo "  --help       Display this help message"
-    echo "  --gdb        Run receiver_lib_test under gdb debugger"
+    echo "  -h, --help           Display this help message"
+    echo "  -d, --debug          Run with gdb for debugging"
+    echo "  -v, --valgrind       Run with valgrind for memory analysis"
+    echo "  --preload <libs>     Comma-separated list of library paths to LD_PRELOAD"
     echo
-    echo "Any arguments after '--' are passed to the executable."
-    exit 0
+    echo "Arguments after '--' will be passed to the executable."
+    echo "Example: ./run.sh --preload /usr/lib/libfoo.so,/usr/lib/libbar.so -- -c config.json"
 }
 
-# Default options
-run_with_gdb=false
-exec_args=()
-
-# Parse options until '--'
-while [[ $# -gt 0 ]]; do
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --help)
-            display_help
+        -h|--help) show_help; exit 0 ;;
+        -d|--debug) DEBUG=true; shift ;;
+        -v|--valgrind) VALGRIND=true; shift ;;
+        --preload)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                # Convert comma-separated list to colon-separated for LD_PRELOAD
+                PRELOAD_LIBS="${2//,/':' }"
+                shift 2
+            else
+                echo "[run.sh, ERROR] --preload requires a comma-separated list of paths"
+                exit 1
+            fi
             ;;
-        --gdb)
-            run_with_gdb=true
-            shift
-            ;;
-        --)
-            shift
-            # All remaining args go to executable
-            exec_args=("$@")
-            break
-            ;;
-        *)
-            echo "Unknown option: $1"
-            display_help
-            ;;
+        --) shift; EXE_ARGS+=("$@"); break ;;
+        *) echo "[run.sh, ERROR] Unknown option: $1"; show_help; exit 1 ;;
     esac
 done
 
-# Resolve script directory (handles symlinks)
-SOURCE="${BASH_SOURCE[0]}"
-while [ -L "$SOURCE" ]; do
-    DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
-    SOURCE=$(readlink "$SOURCE")
-    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-script_dir=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
-readonly script_dir
-
-echo "Run script directory resolved as: $script_dir"
-
-# Source environment setup script quietly
-source "$script_dir/environment/setup_environment.sh" -q
-echo "Environment script sourced."
-
-# Path to executable (adjust if needed)
-executable="$script_dir/../build/receiver_lib_test"
-
-if [ ! -x "$executable" ]; then
-    echo "Error: Executable not found or not executable: $executable"
+# Check executable presence
+if [ ! -f "$EXECUTABLE" ]; then
+    echo "[run.sh, ERROR] Executable not found at: $EXECUTABLE"
+    echo "Try running './build.sh' first."
     exit 1
 fi
 
-echo "Running $executable"
+# Export LD_PRELOAD if any preload libs specified
+if [[ -n "$PRELOAD_LIBS" ]]; then
+    export LD_PRELOAD="$PRELOAD_LIBS${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
 
-if $run_with_gdb; then
-    echo "Starting under gdb..."
-    gdb --args "$executable" "${exec_args[@]}"
+# Run accordingly
+if [ "$DEBUG" = true ]; then
+    echo "[run.sh, INFO] Running with gdb..."
+    gdb --args "$EXECUTABLE" "${EXE_ARGS[@]}"
+elif [ "$VALGRIND" = true ]; then
+    echo "[run.sh, INFO] Running with valgrind..."
+    valgrind --leak-check=full --track-origins=yes "$EXECUTABLE" "${EXE_ARGS[@]}"
 else
-    "$executable" "${exec_args[@]}"
+    echo "[run.sh, INFO] Running analysis_pipeline..."
+    "$EXECUTABLE" "${EXE_ARGS[@]}"
 fi
