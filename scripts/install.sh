@@ -61,7 +61,7 @@ cmake -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" "$SCRIPT_DIR/.."
 
 # Build the project
 echo "Building the project..."
-make -j"$(nproc)"
+make -j
 
 # Install the project
 echo "Installing the project to $INSTALL_PREFIX..."

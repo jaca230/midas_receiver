@@ -8,7 +8,6 @@ This project provides a C++ library and test applications for receiving and proc
 
 - **bin/**: Contains compiled binaries and test executables.
 - **build/**: The build directory where CMake generates build files.
-- **config/**: Configuration files for the receiver (e.g., `config.json`).
 - **include/**: Header files for the receiver library.
 - **lib/**: Compiled static library (`libmidas_receiver_lib.a`).
 - **scripts/**: Build and environment setup scripts.
@@ -60,20 +59,13 @@ Once the project is built, you can run an example midas consumer/receiver using 
 
 ```bash
 # Running the test binary
-./bin/midas_receiver_test
+./build/receiever_lib_test
 ```
 
-### Configuration
-
-The receiver's behavior can be customized using the `config/config.json` file. Ensure that the experiment server and event parameters are correctly set in this configuration file.
-
-## Testing
-
-The project includes test executables for verifying the functionality of the receiver library. To run the tests:
+or just use
 
 ```bash
-# Run the receiver test binary
-./bin/receiver_lib_test
+./scripts/run.sh
 ```
 
 ## License

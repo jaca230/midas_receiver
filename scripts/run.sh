@@ -3,7 +3,7 @@
 # Get the absolute path of the script directory
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 BASE_DIR=$(realpath "$SCRIPT_DIR/..")
-EXECUTABLE="$BASE_DIR/bin/receiver_lib_test"
+EXECUTABLE="$BASE_DIR/build/receiver_lib_test"
 
 # Variables for options
 PRELOAD_LIBS=""

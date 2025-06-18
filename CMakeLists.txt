@@ -1,6 +1,12 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.14)
 
-project(midas_receiver)
+# Only define project if not already defined (to avoid conflicts as a submodule)
+if(NOT PROJECT_NAME)
+  project(MidasReceiver VERSION 0.1 LANGUAGES CXX)
+endif()
+
+# Option to build test executable; parent project can disable this
+option(BUILD_MIDAS_RECEIVER_TEST "Build the receiver_lib_test executable" ON)
 
 # Check MIDASSYS environment variable
 if(NOT DEFINED ENV{MIDASSYS})
@@ -12,68 +18,65 @@ if(NOT DEFINED ENV{MIDASSYS})
   )
 endif()
 
-# Create local bin and lib folders (for build outputs)
-file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
-file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
+# Gather source files except main.cpp
+file(GLOB_RECURSE MIDAS_SRC CONFIGURE_DEPENDS src/*.cpp)
+list(FILTER MIDAS_SRC EXCLUDE REGEX ".*/main.cpp$")
 
-# Set output directories for build artifacts
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)       # for executables
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)       # for shared libs
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)       # for static libs (.a)
-
-# Glob source files (adjust folder name if needed)
-file(GLOB_RECURSE MIDAS_SOURCE_FILES "${CMAKE_SOURCE_DIR}/src/*.cpp")
-
-if(NOT MIDAS_SOURCE_FILES)
-    message(FATAL_ERROR "No source files found in src directory.")
-endif()
-
-add_library(midas_receiver_lib STATIC ${MIDAS_SOURCE_FILES})
-
-set(MIDAS_LIBS
-   $ENV{MIDASSYS}/lib/libmfe.a
-   $ENV{MIDASSYS}/lib/libmidas.a
-)
-
+# Find external dependencies
 find_package(ZLIB REQUIRED)
+find_package(Threads REQUIRED)
+find_library(RT_LIBRARY rt REQUIRED)
 
-target_include_directories(midas_receiver_lib PRIVATE
-   $ENV{MIDASSYS}/include
-   $ENV{MIDASSYS}/mxml
-   $ENV{MIDASSYS}/midasio
-   ${CMAKE_SOURCE_DIR}/include
+# Create static library
+add_library(midas_receiver STATIC ${MIDAS_SRC})
+
+# Set C++17 standard on target
+target_compile_features(midas_receiver PUBLIC cxx_std_17)
+
+# Include directories with build/install interface
+target_include_directories(midas_receiver PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  $ENV{MIDASSYS}/include
+  $ENV{MIDASSYS}/mxml
+  $ENV{MIDASSYS}/midasio
 )
 
-set_property(TARGET midas_receiver_lib PROPERTY CXX_STANDARD 17)
-
-target_link_libraries(midas_receiver_lib PRIVATE ${MIDAS_LIBS} ZLIB::ZLIB)
-
-add_executable(midas_receiver_test src/receiver_test.cpp)
-target_link_libraries(midas_receiver_test PRIVATE midas_receiver_lib ${MIDAS_LIBS} ZLIB::ZLIB pthread rt util)
-target_include_directories(midas_receiver_test PRIVATE
-   $ENV{MIDASSYS}/include
-   $ENV{MIDASSYS}/mxml
-   $ENV{MIDASSYS}/midasio
-   ${CMAKE_SOURCE_DIR}/include
+# Link libraries, with RT_LIBRARY after midas libs for proper linkage
+target_link_libraries(midas_receiver PUBLIC
+  ZLIB::ZLIB
+  Threads::Threads
+  $ENV{MIDASSYS}/lib/libmfe.a
+  $ENV{MIDASSYS}/lib/libmidas.a
+  ${RT_LIBRARY}
 )
 
-add_executable(receiver_lib_test src/main.cpp)
-target_link_libraries(receiver_lib_test PRIVATE midas_receiver_lib ${MIDAS_LIBS} ZLIB::ZLIB pthread rt util)
-target_include_directories(receiver_lib_test PRIVATE
-   $ENV{MIDASSYS}/include
-   $ENV{MIDASSYS}/mxml
-   $ENV{MIDASSYS}/midasio
-   ${CMAKE_SOURCE_DIR}/include
-)
+# Optional test executable
+if(BUILD_MIDAS_RECEIVER_TEST)
+  add_executable(receiver_lib_test main.cpp)
 
-# Set default install prefix if none specified
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Install path prefix." FORCE)
+  target_link_libraries(receiver_lib_test PRIVATE
+    midas_receiver
+    ZLIB::ZLIB
+    Threads::Threads
+    ${RT_LIBRARY}
+  )
 endif()
 
-# Install targets to global system locations (based on CMAKE_INSTALL_PREFIX)
-install(TARGETS midas_receiver_test DESTINATION bin)
-install(TARGETS receiver_lib_test DESTINATION bin)
-install(TARGETS midas_receiver_lib DESTINATION lib)
+# Install rules
+include(GNUInstallDirs)
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
+install(TARGETS midas_receiver
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+if(BUILD_MIDAS_RECEIVER_TEST)
+  install(TARGETS receiver_lib_test
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+endif()
