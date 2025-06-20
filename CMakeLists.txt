@@ -54,7 +54,6 @@ target_compile_features(midas_receiver PUBLIC cxx_std_17)
 target_include_directories(midas_receiver PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/midas_receiver>
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${MIDASSYS_INCLUDE_DIRS}
 )
 
