@@ -78,11 +78,11 @@ void MidasReceiver::start() {
 // Stop receiving events
 void MidasReceiver::stop() {
     if (running) {
+        running = false;
         if (workerThread.joinable()) {
             workerThread.join();
         }
         cm_disconnect_experiment();
-        running = false;
     }
 }
 

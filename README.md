@@ -1,5 +1,9 @@
 # MIDAS Receiver
 
+[![C++17](https://img.shields.io/badge/C++-17-blue.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+
+
 ## Description
 
 This project provides a C++ library and test applications for receiving and processing events from a MIDAS experiment. The receiver connects to the experiment server, requests events, and processes them based on predefined configurations.
