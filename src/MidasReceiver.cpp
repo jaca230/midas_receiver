@@ -8,17 +8,11 @@
 MidasReceiver* MidasReceiver::instance = nullptr;
 std::mutex MidasReceiver::initMutex;
 
-// Constructor (private for singleton)
-MidasReceiver::MidasReceiver()
-    : hostName(""),
-      exptName(""), 
-      bufferName("SYSTEM"), 
-      clientName("Event Receiver"), 
-      eventID(EVENTID_ALL), 
-      getAllEvents(true), 
-      maxBufferSize(1000),
-      cmYieldTimeout(300), 
-      running(false) {}
+// Default constructor calls init() with default config
+MidasReceiver::MidasReceiver() {
+    MidasReceiverConfig defaultConfig{};
+    init(defaultConfig);
+}
 
 // Destructor
 MidasReceiver::~MidasReceiver() {
@@ -35,37 +29,39 @@ MidasReceiver& MidasReceiver::getInstance() {
     return *instance;
 }
 
-// Initialize receiver with parameters
-void MidasReceiver::init(const std::string& host,
-                         const std::string& expt,
-                         const std::string& bufferName, 
-                         const std::string& clientName, 
-                         int eventID, 
-                         bool getAllEvents, 
-                         size_t maxBufferSize, 
-                         int cmYieldTimeout) {
-    if (host.empty()) {
-        char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
+// Initialize receiver with config struct
+void MidasReceiver::init(const MidasReceiverConfig& config) {
+    // If host or experiment are empty, use environment variables via cm_get_environment
+    if (config.host.empty() || config.experiment.empty()) {
+        char host_name[HOST_NAME_LENGTH] = {0};
+        char expt_name[NAME_LENGTH] = {0};
         cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
-        this->hostName = host_name;
+        if (config.host.empty()) {
+            this->hostName = host_name;
+        } else {
+            this->hostName = config.host;
+        }
+        if (config.experiment.empty()) {
+            this->exptName = expt_name;
+        } else {
+            this->exptName = config.experiment;
+        }
     } else {
-        this->hostName = host;
-    }
-    if (expt.empty()) {
-        char host_name[HOST_NAME_LENGTH], expt_name[NAME_LENGTH];
-        cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
-        this->exptName = expt_name;
-    } else {
-        this->exptName = expt;
+        this->hostName = config.host;
+        this->exptName = config.experiment;
     }
 
-    this->bufferName = bufferName.empty() ? this->bufferName : bufferName;
-    this->clientName = clientName.empty() ? this->clientName : clientName;
-    this->eventID = eventID;
-    this->getAllEvents = getAllEvents;
-    this->maxBufferSize = maxBufferSize;
-    this->cmYieldTimeout = cmYieldTimeout; // Set cm_yield timeout
+    this->bufferName = config.bufferName.empty() ? this->bufferName : config.bufferName;
+    this->clientName = config.clientName.empty() ? this->clientName : config.clientName;
+    this->eventID = config.eventID;
+    this->getAllEvents = config.getAllEvents;
+    this->maxBufferSize = config.maxBufferSize;
+    this->cmYieldTimeout = config.cmYieldTimeout;
+
+    // Save the transition registrations for later use when setting up transitions
+    this->transitionRegistrations_ = config.transitionRegistrations;
 }
+
 // Start receiving events
 void MidasReceiver::start() {
     if (!running) {
@@ -125,22 +121,8 @@ void MidasReceiver::run() {
         return;
     }
 
-    // Register transitions with customized sequence numbers
-    struct TransitionRegistration {
-        int transition;
-        int seq;
-    };
-
-    TransitionRegistration registrations[] = {
-        {TR_START, 100},      // want to be an early consumer of start sequence
-        {TR_STOP, 900},       // want to be a later consumer of stop sequence
-        {TR_PAUSE, 100},      // want to be an early consumer of pause sequence
-        {TR_RESUME, 100},     // want to be an early consumer of resume sequence
-        {TR_STARTABORT, 500}, // want to be a mid consumer of start abort sequence
-    };
-
-    for (const auto& reg : registrations) {
-        status = cm_register_transition(reg.transition, MidasReceiver::processTransitionCallback, reg.seq);
+    for (const auto& reg : transitionRegistrations_) {
+        status = cm_register_transition(reg.transition, MidasReceiver::processTransitionCallback, reg.sequence);
         if (status != CM_SUCCESS) {
             cm_msg(MERROR, "MidasReceiver::run",
                    "Failed to register transition callback for %s. Status: %d",

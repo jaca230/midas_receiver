@@ -31,18 +31,30 @@ int main(int argc, char* argv[]) {
     std::cout << "Starting MidasReceiver with interval " << intervalMs
               << " ms and retrieving " << numEvents << " events per iteration." << std::endl;
 
-    // Get singleton instance and initialize
+    // Get singleton instance
     MidasReceiver& midasReceiver = MidasReceiver::getInstance();
-    midasReceiver.init(
-        "",                   // Host (empty = environment default)
-        "",                   // Experiment name (empty = environment default)
-        "SYSTEM",             // Buffer name
-        "Event Receiver",     // Client name
-        EVENTID_ALL,          // Event ID (all)
-        true,                 // Get all events
-        1000,                 // Max buffer size
-        300                   // cm_yield timeout in ms
-    );
+
+    // Create and fill config struct
+    MidasReceiverConfig config;
+    config.host = "";             // empty = env default
+    config.experiment = "";       // empty = env default
+    config.bufferName = "SYSTEM";
+    config.clientName = "Event Receiver";
+    config.eventID = EVENTID_ALL;
+    config.getAllEvents = true;
+    config.maxBufferSize = 1000;
+    config.cmYieldTimeout = 300;
+
+    // Set transition registrations explicitly (this overrides the defaults)
+    config.transitionRegistrations = {
+        {TR_START,      100},  // early consumer of START sequence
+        {TR_STOP,       900},  // late consumer of STOP sequence
+        {TR_PAUSE,      100},  // early consumer of PAUSE sequence
+        {TR_RESUME,     100},  // early consumer of RESUME sequence
+        {TR_STARTABORT, 500}   // mid consumer of STARTABORT sequence
+    };
+
+    midasReceiver.init(config);
 
     // Separate last timestamps for events, messages, transitions
     auto lastEventTimestamp = std::chrono::system_clock::now();
