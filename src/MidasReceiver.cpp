@@ -111,12 +111,44 @@ void MidasReceiver::run() {
     }
 
     status = bm_request_event(hBufEvent, (WORD)eventID, TRIGGER_ALL, getAllEvents ? GET_ALL : GET_NONBLOCKING,
-                              &requestID, MidasReceiver::processEventCallback); // Update status when event request is made
-
+                              &requestID, MidasReceiver::processEventCallback);
     if (status != BM_SUCCESS) {
         cm_msg(MERROR, "MidasReceiver::run", "Failed to request event. Status: %d", status);
         listeningForEvents = false;
         return;
+    }
+
+    status = cm_msg_register(MidasReceiver::processMessageCallback);
+    if (status != CM_SUCCESS) {
+        cm_msg(MERROR, "MidasReceiver::run", "Failed to register message callback. Status: %d", status);
+        listeningForEvents = false;
+        return;
+    }
+
+    // Register transitions with customized sequence numbers
+    struct TransitionRegistration {
+        int transition;
+        int seq;
+    };
+
+    TransitionRegistration registrations[] = {
+        {TR_START, 100},      // want to be an early consumer of start sequence
+        {TR_STOP, 900},       // want to be a later consumer of stop sequence
+        {TR_PAUSE, 100},      // want to be an early consumer of pause sequence
+        {TR_RESUME, 100},     // want to be an early consumer of resume sequence
+        {TR_STARTABORT, 500}, // want to be a mid consumer of start abort sequence
+    };
+
+    for (const auto& reg : registrations) {
+        status = cm_register_transition(reg.transition, MidasReceiver::processTransitionCallback, reg.seq);
+        if (status != CM_SUCCESS) {
+            cm_msg(MERROR, "MidasReceiver::run",
+                   "Failed to register transition callback for %s. Status: %d",
+                   cm_transition_name(reg.transition).c_str(),
+                   status);
+            listeningForEvents = false;
+            return;
+        }
     }
 
     while (running && (status != RPC_SHUTDOWN && status != SS_ABORT)) {
@@ -125,8 +157,8 @@ void MidasReceiver::run() {
 
     bm_close_buffer(hBufEvent);
     listeningForEvents = false;
-
 }
+
 
 // Static callback: process event
 void MidasReceiver::processEventCallback(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
@@ -226,7 +258,6 @@ INT MidasReceiver::processTransition(INT run_number, char* error) {
         transitionBuffer.push_back(timedTransition);
     }
 
-    cm_msg(MINFO, "processTransition", "Processing transition for run: %d", run_number);
     return SUCCESS;
 }
 
