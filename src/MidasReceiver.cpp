@@ -9,7 +9,8 @@ MidasReceiver* MidasReceiver::instance = nullptr;
 std::mutex MidasReceiver::initMutex;
 
 // Default constructor calls init() with default config
-MidasReceiver::MidasReceiver() {
+MidasReceiver::MidasReceiver() :
+    running(false) {
     MidasReceiverConfig defaultConfig{};
     init(defaultConfig);
 }
