@@ -16,11 +16,9 @@ std::string formatTimestamp(const std::chrono::system_clock::time_point& tp) {
 }
 
 int main(int argc, char* argv[]) {
-    // Default configuration parameters
-    int intervalMs = 1000;       // Sleep interval in ms
-    size_t numEvents = 1;        // Number of events to retrieve per iteration
+    int intervalMs = 1000;
+    size_t numEvents = 1;
 
-    // Parse optional command line args
     if (argc > 1) {
         intervalMs = std::atoi(argv[1]);
     }
@@ -31,32 +29,27 @@ int main(int argc, char* argv[]) {
     std::cout << "Starting MidasReceiver with interval " << intervalMs
               << " ms and retrieving " << numEvents << " events per iteration." << std::endl;
 
-    // Get singleton instance
     MidasReceiver& midasReceiver = MidasReceiver::getInstance();
 
-    // Create and fill config struct
     MidasReceiverConfig config;
-    config.host = "";             // empty = env default
-    config.experiment = "";       // empty = env default
+    config.host = "";
+    config.experiment = "";
     config.bufferName = "SYSTEM";
     config.clientName = "Event Receiver";
     config.eventID = EVENTID_ALL;
     config.getAllEvents = true;
     config.maxBufferSize = 1000;
     config.cmYieldTimeout = 300;
-
-    // Set transition registrations explicitly (this overrides the defaults)
     config.transitionRegistrations = {
-        {TR_START,      100},  // early consumer of START sequence
-        {TR_STOP,       900},  // late consumer of STOP sequence
-        {TR_PAUSE,      100},  // early consumer of PAUSE sequence
-        {TR_RESUME,     100},  // early consumer of RESUME sequence
-        {TR_STARTABORT, 500}   // mid consumer of STARTABORT sequence
+        {TR_START,      100},
+        {TR_STOP,       900},
+        {TR_PAUSE,      100},
+        {TR_RESUME,     100},
+        {TR_STARTABORT, 500}
     };
 
     midasReceiver.init(config);
 
-    // Separate last timestamps for events, messages, transitions
     auto lastEventTimestamp = std::chrono::system_clock::now();
     auto lastMessageTimestamp = std::chrono::system_clock::now();
     auto lastTransitionTimestamp = std::chrono::system_clock::now();
@@ -66,12 +59,13 @@ int main(int argc, char* argv[]) {
     while (midasReceiver.isListeningForEvents()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
 
-        // Retrieve and print events
+        // Retrieve and print events (shared_ptr<TimedEvent>)
         auto timedEvents = midasReceiver.getLatestEvents(numEvents, lastEventTimestamp);
         if (!timedEvents.empty()) {
             std::cout << "\n=== Midas Events (count=" << timedEvents.size() << ") ===" << std::endl;
-            for (auto& timedEvent : timedEvents) {
-                TMEvent& event = timedEvent.event;
+            for (auto& timedEventPtr : timedEvents) {
+                auto& timedEvent = *timedEventPtr;
+                TMEvent& event = *timedEvent.event;
                 auto& ts = timedEvent.timestamp;
 
                 event.FindAllBanks();
@@ -91,19 +85,18 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                // Print first 32 bytes of data in hex
                 std::cout << "  Data (first 32 bytes): ";
                 for (size_t i = 0; i < std::min(event.data.size(), size_t(32)); ++i) {
                     printf("%02X ", static_cast<unsigned char>(event.data[i]));
                 }
                 std::cout << std::endl << std::endl;
             }
-            lastEventTimestamp = timedEvents.back().timestamp;
+            lastEventTimestamp = timedEvents.back()->timestamp;
         } else {
             std::cout << "[INFO] No new events." << std::endl;
         }
 
-        // Retrieve and print messages
+        // Messages remain unchanged (still by value)
         auto messages = midasReceiver.getLatestMessages(numEvents, lastMessageTimestamp);
         if (!messages.empty()) {
             std::cout << "\n=== Midas Messages (count=" << messages.size() << ") ===" << std::endl;
@@ -116,7 +109,7 @@ int main(int argc, char* argv[]) {
             lastMessageTimestamp = messages.back().timestamp;
         }
 
-        // Retrieve and print transitions
+        // Transitions remain unchanged (still by value)
         auto transitions = midasReceiver.getLatestTransitions(numEvents, lastTransitionTimestamp);
         if (!transitions.empty()) {
             std::cout << "\n=== Midas Transitions (count=" << transitions.size() << ") ===" << std::endl;

@@ -162,20 +162,12 @@ INT MidasReceiver::processTransitionCallback(INT run_number, char* error) {
 }
 
 void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* pheader, void* pevent) {
-    bool dataJam = false;
-    int size, *pdata, id;
-
-    // Accumulate received event size
-    size = pheader->data_size;
-    id = pheader->event_id;
-    if (id > 9) {
-        id = 9; // Clamp ID to range [0-9]
-    }
+    int size = pheader->data_size;
+    int id = pheader->event_id;
+    if (id > 9) id = 9;
     eventByteCount += size + sizeof(EVENT_HEADER);
 
-    // Serial number checks for all events
     if (getAllEvents) {
-        // Skip serial number check for the first event or if it's the first event of a new run
         if (!firstEvent && pheader->serial_number != 0 &&
             static_cast<INT>(pheader->serial_number) != serialNumbers[id] + 1) {
             cm_msg(MERROR, "processEvent",
@@ -187,27 +179,23 @@ void MidasReceiver::processEvent(HNDLE hBuf, HNDLE request_id, EVENT_HEADER* phe
         }
         serialNumbers[id] = pheader->serial_number;
     }
+    firstEvent = false;
 
-    firstEvent = false; // After processing the first event
-
-    // Create a TMEvent from the received buffer
-    TMEvent timedEvent(pheader, size + sizeof(EVENT_HEADER));
+    // Create shared_ptr<TimedEvent>
+    auto newTimedEvent = std::make_shared<TimedEvent>();
+    newTimedEvent->timestamp = std::chrono::system_clock::now();
+    newTimedEvent->event = std::make_shared<TMEvent>(pheader, size + sizeof(EVENT_HEADER));
 
     {
         std::lock_guard<std::mutex> lock(eventBufferMutex);
         if (eventBuffer.size() >= maxBufferSize) {
-            eventBuffer.pop_front(); // Remove the oldest event to make space
+            eventBuffer.pop_front();
         }
-
-        // Create a TimedEvent with the current timestamp and the constructed TMEvent
-        TimedEvent newTimedEvent;
-        newTimedEvent.timestamp = std::chrono::system_clock::now();
-        newTimedEvent.event = timedEvent;  // Store the TMEvent
-
         eventBuffer.push_back(std::move(newTimedEvent));
-        bufferCV.notify_all(); // Notify any waiting threads
+        bufferCV.notify_all();
     }
 }
+
 
 // Process message (add to buffer with timestamp)
 void MidasReceiver::processMessage(HNDLE hBuf, HNDLE id, EVENT_HEADER* pheader, void* message) {
@@ -245,67 +233,57 @@ INT MidasReceiver::processTransition(INT run_number, char* error) {
 }
 
 
-// Retrieve the latest N events (including timestamps)
-std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n) {
-    std::vector<TimedEvent> events;
+std::vector<std::shared_ptr<MidasReceiver::TimedEvent>> MidasReceiver::getLatestEvents(size_t n) {
+    std::vector<std::shared_ptr<TimedEvent>> events;
     std::lock_guard<std::mutex> lock(eventBufferMutex);
-    
+
     size_t start = eventBuffer.size() > n ? eventBuffer.size() - n : 0;
     for (size_t i = start; i < eventBuffer.size(); ++i) {
-        events.push_back(eventBuffer[i]); // Directly use the entire TimedEvent from the buffer
+        events.push_back(eventBuffer[i]);
     }
     return events;
 }
 
-// Retrieve the latest N events since a specific timestamp (including timestamps)
-std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
-    std::vector<TimedEvent> events;
+std::vector<std::shared_ptr<MidasReceiver::TimedEvent>> MidasReceiver::getLatestEvents(size_t n, std::chrono::system_clock::time_point since) {
+    std::vector<std::shared_ptr<TimedEvent>> events;
     std::lock_guard<std::mutex> lock(eventBufferMutex);
 
-    // Create a temporary list to store events that are after the 'since' timestamp
-    std::vector<TimedEvent> filteredEvents;
-
-    // Filter events based on the 'since' timestamp
-    for (const auto& timedEvent : eventBuffer) {
-        if (timedEvent.timestamp > since) {
-            filteredEvents.push_back(timedEvent); // Store the entire TimedEvent (including timestamp)
+    std::vector<std::shared_ptr<TimedEvent>> filteredEvents;
+    for (auto const& e : eventBuffer) {
+        if (e->timestamp > since) {
+            filteredEvents.push_back(e);
         }
     }
 
-    // Now return the most recent 'n' events from the filtered list
     size_t start = filteredEvents.size() > n ? filteredEvents.size() - n : 0;
     for (size_t i = start; i < filteredEvents.size(); ++i) {
         events.push_back(filteredEvents[i]);
     }
-
     return events;
 }
 
-// Retrieve events since a specific timestamp (including timestamps)
-std::vector<MidasReceiver::TimedEvent> MidasReceiver::getLatestEvents(std::chrono::system_clock::time_point since) {
-    std::vector<TimedEvent> events;
+std::vector<std::shared_ptr<MidasReceiver::TimedEvent>> MidasReceiver::getLatestEvents(std::chrono::system_clock::time_point since) {
+    std::vector<std::shared_ptr<TimedEvent>> events;
     std::lock_guard<std::mutex> lock(eventBufferMutex);
 
-    // Iterate through the event buffer starting from the earliest event
     for (auto it = eventBuffer.begin(); it != eventBuffer.end(); ++it) {
-        if (it->timestamp > since) {
-            // Add all subsequent events (already in time order) to the result
+        if ((*it)->timestamp > since) {
             for (; it != eventBuffer.end(); ++it) {
-                events.push_back(*it); // Directly use the entire TimedEvent from the buffer
+                events.push_back(*it);
             }
-            break; // Exit the loop once we find the first event after the given timestamp
+            break;
         }
     }
     return events;
 }
 
-// Retrieve all events (including timestamps)
-std::vector<MidasReceiver::TimedEvent> MidasReceiver::getWholeBuffer() {
-    std::vector<TimedEvent> events;
+std::vector<std::shared_ptr<MidasReceiver::TimedEvent>> MidasReceiver::getWholeBuffer() {
+    std::vector<std::shared_ptr<TimedEvent>> events;
     std::lock_guard<std::mutex> lock(eventBufferMutex);
-    events.insert(events.end(), eventBuffer.begin(), eventBuffer.end()); // Directly use TimedEvent from the buffer
+    events.insert(events.end(), eventBuffer.begin(), eventBuffer.end());
     return events;
 }
+
 
 // Retrieve all messages (including timestamps)
 std::vector<MidasReceiver::TimedMessage> MidasReceiver::getMessageBuffer() {
