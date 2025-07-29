@@ -135,7 +135,7 @@ void MidasReceiver::run() {
     }
 
     while (running && (status != RPC_SHUTDOWN && status != SS_ABORT)) {
-        status = cm_yield(1000);
+        status = cm_yield(cmYieldTimeout);
     }
 
     bm_close_buffer(hBufEvent);
