@@ -17,7 +17,7 @@ std::string formatTimestamp(const std::chrono::system_clock::time_point& tp) {
 
 int main(int argc, char* argv[]) {
     // Default configuration parameters
-    int intervalMs = 1000;       // Sleep interval in ms
+    int intervalMs = 5;       // Sleep interval in ms
     size_t numEvents = 1;        // Number of events to retrieve per iteration
 
     // Parse optional command line args
@@ -36,9 +36,9 @@ int main(int argc, char* argv[]) {
 
     // Create and fill config struct
     MidasReceiverConfig config;
-    config.host = "";             // empty = env default
-    config.experiment = "";       // empty = env default
-    config.bufferName = "SYSTEM";
+    config.host = "10.163.105.238";             // empty = env default
+    config.experiment = "DAQ";       // empty = env default
+    config.bufferName = "BUF001";
     config.clientName = "Event Receiver";
     config.eventID = EVENTID_ALL;
     config.getAllEvents = true;
