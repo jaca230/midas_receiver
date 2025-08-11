@@ -35,6 +35,7 @@ set(MIDASSYS_LIB_DIR $ENV{MIDASSYS}/lib)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 find_library(RT_LIBRARY rt REQUIRED)
+find_library(DL_LIBRARY dl REQUIRED)
 
 # Gather sources
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
@@ -63,6 +64,7 @@ target_link_libraries(midas_receiver PUBLIC
   ${MIDASSYS_LIB_DIR}/libmfe.a
   ${MIDASSYS_LIB_DIR}/libmidas.a
   ${RT_LIBRARY}
+  ${DL_LIBRARY}
 )
 
 # Optional test executable
