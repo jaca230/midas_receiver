@@ -64,6 +64,8 @@ void MidasReceiver::init(const MidasReceiverConfig& config) {
 
     // Save the transition registrations for later use when setting up transitions
     this->transitionRegistrations_ = config.transitionRegistrations;
+
+    isInitialized = true;
 }
 
 // Start receiving events
@@ -433,9 +435,15 @@ bool MidasReceiver::IsRunning() const {
     return running.load();
 }
 
+// Getter for is initialized
+bool MidasReceiver::IsInitialized() const {
+    return isInitialized.load();
+}
+
 
 // Getter for status (thread-safe)
 INT MidasReceiver::getStatus() const {
     std::lock_guard<std::mutex> lock(statusMutex); // Locking to ensure thread-safety
     return status;
 }
+

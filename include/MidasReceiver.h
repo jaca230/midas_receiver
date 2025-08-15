@@ -80,6 +80,7 @@ public:
     INT getStatus() const;
     bool isListeningForEvents() const;
     bool IsRunning() const;
+    bool IsInitialized() const;
 
 private:
     MidasReceiver();
@@ -118,6 +119,7 @@ private:
     std::thread workerThread;
     std::atomic<bool> running;
     std::atomic<bool> listeningForEvents;
+    std::atomic<bool> isInitialized;
 
     std::vector<TransitionRegistration> transitionRegistrations_;
 
