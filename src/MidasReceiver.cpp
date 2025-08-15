@@ -1,6 +1,9 @@
 #include "MidasReceiver.h"
+
 #include <cstring>
 #include <iostream>
+
+#include "odbxx.h"
 
 #define MAX_EVENT_SIZE (10 * 1024 * 1024)
 
@@ -407,6 +410,15 @@ std::vector<MidasReceiver::TimedTransition> MidasReceiver::getLatestTransitions(
         }
     }
     return transitions;
+}
+
+
+std::string MidasReceiver::getOdb(const std::string& path) {
+    // Connect to the requested ODB path
+    midas::odb o(path);
+
+    // Return the JSON representation as a string
+    return o.dump();
 }
 
 

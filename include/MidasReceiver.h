@@ -75,6 +75,8 @@ public:
     std::vector<TimedTransition> getLatestTransitions(std::chrono::system_clock::time_point since);
     std::vector<TimedTransition> getLatestTransitions(size_t n, std::chrono::system_clock::time_point since);
 
+    std::string getOdb(const std::string& path = "/");
+
     INT getStatus() const;
     bool isListeningForEvents() const;
     bool IsRunning() const;

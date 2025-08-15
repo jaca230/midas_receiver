@@ -28,6 +28,7 @@ set(MIDASSYS_INCLUDE_DIRS
   $ENV{MIDASSYS}/include
   $ENV{MIDASSYS}/mxml
   $ENV{MIDASSYS}/midasio
+  $ENV{MIDASSYS}/mjson
 )
 set(MIDASSYS_LIB_DIR $ENV{MIDASSYS}/lib)
 
