@@ -13,9 +13,10 @@ std::mutex MidasReceiver::initMutex;
 
 // Default constructor calls init() with default config
 MidasReceiver::MidasReceiver() :
-    running(false) {
+    running(false)
+{
     MidasReceiverConfig defaultConfig{};
-    init(defaultConfig);
+    init(defaultConfig, /*fromDefault=*/true); // special flag for default init
 }
 
 // Destructor
@@ -34,65 +35,33 @@ MidasReceiver& MidasReceiver::getInstance() {
 }
 
 // Initialize receiver with config struct
-void MidasReceiver::init(const MidasReceiverConfig& config) {
-    std::cout << "[DEBUG] Entering MidasReceiver::init()" << std::endl;
-
+void MidasReceiver::init(const MidasReceiverConfig& config, bool fromDefault = false) {
     // If host or experiment are empty, use environment variables via cm_get_environment
     if (config.host.empty() || config.experiment.empty()) {
-        std::cout << "[DEBUG] Host or experiment missing from config, falling back to cm_get_environment()" << std::endl;
-
         char host_name[HOST_NAME_LENGTH] = {0};
         char expt_name[NAME_LENGTH] = {0};
         cm_get_environment(host_name, sizeof(host_name), expt_name, sizeof(expt_name));
-
-        if (config.host.empty()) {
-            this->hostName = host_name;
-            std::cout << "[DEBUG] Using host from environment: " << this->hostName << std::endl;
-        } else {
-            this->hostName = config.host;
-            std::cout << "[DEBUG] Using host from config: " << this->hostName << std::endl;
-        }
-
-        if (config.experiment.empty()) {
-            this->exptName = expt_name;
-            std::cout << "[DEBUG] Using experiment from environment: " << this->exptName << std::endl;
-        } else {
-            this->exptName = config.experiment;
-            std::cout << "[DEBUG] Using experiment from config: " << this->exptName << std::endl;
-        }
+        this->hostName = config.host.empty() ? host_name : config.host;
+        this->exptName = config.experiment.empty() ? expt_name : config.experiment;
     } else {
         this->hostName = config.host;
         this->exptName = config.experiment;
-        std::cout << "[DEBUG] Using host and experiment directly from config" << std::endl;
-        std::cout << "        hostName=" << this->hostName << ", exptName=" << this->exptName << std::endl;
     }
 
     this->bufferName = config.bufferName.empty() ? this->bufferName : config.bufferName;
-    std::cout << "[DEBUG] bufferName=" << this->bufferName << std::endl;
-
     this->clientName = config.clientName.empty() ? this->clientName : config.clientName;
-    std::cout << "[DEBUG] clientName=" << this->clientName << std::endl;
-
     this->eventID = config.eventID;
-    std::cout << "[DEBUG] eventID=" << this->eventID << std::endl;
-
     this->getAllEvents = config.getAllEvents;
-    std::cout << "[DEBUG] getAllEvents=" << (this->getAllEvents ? "true" : "false") << std::endl;
-
     this->maxBufferSize = config.maxBufferSize;
-    std::cout << "[DEBUG] maxBufferSize=" << this->maxBufferSize << std::endl;
-
     this->cmYieldTimeout = config.cmYieldTimeout;
-    std::cout << "[DEBUG] cmYieldTimeout=" << this->cmYieldTimeout << " ms" << std::endl;
 
     // Save the transition registrations for later use when setting up transitions
     this->transitionRegistrations_ = config.transitionRegistrations;
-    std::cout << "[DEBUG] transitionRegistrations_ size=" 
-              << this->transitionRegistrations_.size() << std::endl;
 
-    isInitialized = true;
-    std::cout << "[DEBUG] Initialization complete, isInitialized=" 
-              << (isInitialized ? "true" : "false") << std::endl;
+    // Only mark fully initialized if not from default
+    if (!fromDefault) {
+        isInitialized = true;
+    }
 }
 
 // Start receiving events
