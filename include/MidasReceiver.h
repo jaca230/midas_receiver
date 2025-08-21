@@ -56,7 +56,7 @@ public:
 
     static MidasReceiver& getInstance();
 
-    void init(const MidasReceiverConfig& config);
+    void init(const MidasReceiverConfig& config, bool fromDefault = false);
     void start();
     void stop();
 
