@@ -35,7 +35,7 @@ MidasReceiver& MidasReceiver::getInstance() {
 }
 
 // Initialize receiver with config struct
-void MidasReceiver::init(const MidasReceiverConfig& config, bool fromDefault = false) {
+void MidasReceiver::init(const MidasReceiverConfig& config, bool fromDefault) {
     // If host or experiment are empty, use environment variables via cm_get_environment
     if (config.host.empty() || config.experiment.empty()) {
         char host_name[HOST_NAME_LENGTH] = {0};
