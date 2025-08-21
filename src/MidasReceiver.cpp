@@ -13,7 +13,9 @@ std::mutex MidasReceiver::initMutex;
 
 // Default constructor calls init() with default config
 MidasReceiver::MidasReceiver() :
-    running(false)
+    running(false),
+    listeningForEvents(false),
+    isInitialized(false)
 {
     MidasReceiverConfig defaultConfig{};
     init(defaultConfig, /*fromDefault=*/true); // special flag for default init
